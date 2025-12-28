@@ -11,6 +11,8 @@ export class OpenAIResponseHandler{
    private is_done = false
    private last_update_time = 0
 
+   // this construtor is basically how to handle open ai
+
      constructor(
     private readonly openai: OpenAI,
     private readonly openAiThread: OpenAI.Beta.Threads.Thread,
@@ -23,6 +25,8 @@ export class OpenAIResponseHandler{
     this.chatClient.on("ai_indicator.stop", this.handleStopGenerating);  // our application continuous getting data, to this flag tell to stop continous data
   }
 
+
+  // orchestration IS DONE here
 run = async () => {
     const { cid, id: message_id } = this.message;
     let isCompleted = false;
@@ -111,6 +115,8 @@ run = async () => {
     }
   };
 
+
+   // he we are cleaning all the resources and stop the ai indicator
  dispose = async () => {
     if (this.is_done) {
       return;
@@ -120,7 +126,8 @@ run = async () => {
     this.onDispose();
   };
 
-  
+
+  //how ai stop generating the content
 private handleStopGenerating = async (event: Event) => {
     if (this.is_done || event.message_id !== this.message.id) {
       return;
@@ -151,6 +158,7 @@ private handleStopGenerating = async (event: Event) => {
   };
 
 
+  // all the event we are going to stream
  private handleStreamEvent = (
     event: OpenAI.Beta.Assistants.AssistantStreamEvent
   ) => {
@@ -210,7 +218,7 @@ private handleStopGenerating = async (event: Event) => {
     await this.dispose();
   };
 
-
+// this is our web search tool
   private performWebSearch = async (query : string) : Promise<string>=>{
    const TAVILY_API_KEY =  process.env.TAVILY_API_KEY;
 

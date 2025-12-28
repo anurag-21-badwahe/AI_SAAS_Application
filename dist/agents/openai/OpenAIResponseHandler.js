@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OpenAIResponseHandler = void 0;
 class OpenAIResponseHandler {
+    // this construtor is basically how to handle open ai
     constructor(openai, openAiThread, assistantStream, chatClient, channel, message, onDispose) {
         this.openai = openai;
         this.openAiThread = openAiThread;
@@ -15,84 +16,80 @@ class OpenAIResponseHandler {
         this.run_id = "";
         this.is_done = false;
         this.last_update_time = 0;
-        // run = async () => {
-        //     const { cid, id: message_id } = this.message;
-        //     let isCompleted = false;
-        //     let toolOutputs = [];
-        //     let currentStream: AssistantStream = this.assistantStream;
-        //     try {
-        //       while (!isCompleted) {
-        //         for await (const event of currentStream) {
-        //           this.handleStreamEvent(event);
-        //           if (
-        //             event.event === "thread.run.requires_action" &&
-        //             event.data.required_action?.type === "submit_tool_outputs"
-        //           ) {
-        //             this.run_id = event.data.id;
-        //             await this.channel.sendEvent({
-        //               type: "ai_indicator.update",
-        //               ai_state: "AI_STATE_EXTERNAL_SOURCES",
-        //               cid: cid,
-        //               message_id: message_id,
-        //             });
-        //             const toolCalls =
-        //               event.data.required_action.submit_tool_outputs.tool_calls;
-        //             toolOutputs = [];
-        //             for (const toolCall of toolCalls) {
-        //               if (toolCall.function.name === "web_search") {
-        //                 try {
-        //                   const args = JSON.parse(toolCall.function.arguments);
-        //                   const searchResult = await this.performWebSearch(args.query);
-        //                   toolOutputs.push({
-        //                     tool_call_id: toolCall.id,
-        //                     output: searchResult,
-        //                   });
-        //                 } catch (e) {
-        //                   console.error(
-        //                     "Error parsing tool arguments or performing web search",
-        //                     e
-        //                   );
-        //                   toolOutputs.push({
-        //                     tool_call_id: toolCall.id,
-        //                     output: JSON.stringify({ error: "failed to call tool" }),
-        //                   });
-        //                 }
-        //               }
-        //             }
-        //             // Exit the inner loop to submit tool outputs
-        //             break;
-        //           }
-        //           if (event.event === "thread.run.completed") {
-        //             isCompleted = true;
-        //             break; // Exit the inner loop
-        //           }
-        //           if (event.event === "thread.run.failed") {
-        //             isCompleted = true;
-        //             await this.handleError(
-        //               new Error(event.data.last_error?.message ?? "Run failed")
-        //             );
-        //             break; // Exit the inner loop
-        //           }
-        //         }
-        //         if (isCompleted) {
-        //           break; // Exit the while loop
-        //         }
-        //         if (toolOutputs.length > 0) {
-        //           currentStream = this.openai.beta.threads.runs.submitToolOutputsStream(
-        //             this.openAiThread.id,
-        //             this.run_id,
-        //             { tool_outputs: toolOutputs }
-        //           );
-        //           toolOutputs = []; // Reset tool outputs
-        //         }
-        //       }
-        //     } catch (error) {
-        //       console.error("An error occurred during the run:", error);
-        //       await this.handleError(error as Error);
-        //     } finally {
-        //       await this.dispose();
-        //     }
-        //   };
+        // orchestration IS DONE here
+        this.run = async () => {
+            const { cid, id: message_id } = this.message;
+            let isCompleted = false;
+            let toolOutputs = [];
+            let currentStream = this.assistantStream;
+            try {
+                while (!isCompleted) {
+                    for await (const event of currentStream) {
+                        this.handleStreamEvent(event);
+                        if (event.event === "thread.run.requires_action" &&
+                            event.data.required_action?.type === "submit_tool_outputs") {
+                            this.run_id = event.data.id;
+                            await this.channel.sendEvent({
+                                type: "ai_indicator.update",
+                                ai_state: "AI_STATE_EXTERNAL_SOURCES",
+                                cid: cid,
+                                message_id: message_id,
+                            });
+                            const toolCalls = event.data.required_action.submit_tool_outputs.tool_calls;
+                            toolOutputs = [];
+                            for (const toolCall of toolCalls) {
+                                if (toolCall.function.name === "web_search") {
+                                    try {
+                                        const args = JSON.parse(toolCall.function.arguments);
+                                        const searchResult = await this.performWebSearch(args.query);
+                                        toolOutputs.push({
+                                            tool_call_id: toolCall.id,
+                                            output: searchResult,
+                                        });
+                                    }
+                                    catch (e) {
+                                        console.error("Error parsing tool arguments or performing web search", e);
+                                        toolOutputs.push({
+                                            tool_call_id: toolCall.id,
+                                            output: JSON.stringify({ error: "failed to call tool" }),
+                                        });
+                                    }
+                                }
+                            }
+                            // Exit the inner loop to submit tool outputs
+                            break;
+                        }
+                        if (event.event === "thread.run.completed") {
+                            isCompleted = true;
+                            break; // Exit the inner loop
+                        }
+                        if (event.event === "thread.run.failed") {
+                            isCompleted = true;
+                            await this.handleError(new Error(event.data.last_error?.message ?? "Run failed"));
+                            break; // Exit the inner loop
+                        }
+                    }
+                    if (isCompleted) {
+                        break; // Exit the while loop
+                    }
+                    if (toolOutputs.length > 0) {
+                        currentStream = this.openai.beta.threads.runs.submitToolOutputsStream(this.run_id, {
+                            thread_id: this.openAiThread.id,
+                            tool_outputs: toolOutputs,
+                        });
+                        toolOutputs = [];
+                    }
+                }
+            }
+            catch (error) {
+                console.error("An error occurred during the run:", error);
+                await this.handleError(error);
+            }
+            finally {
+                await this.dispose();
+            }
+        };
+        // he we are cleaning all the resources and stop the ai indicator
         this.dispose = async () => {
             if (this.is_done) {
                 return;
@@ -101,6 +98,7 @@ class OpenAIResponseHandler {
             this.chatClient.off("ai_indicator.stop", this.handleStopGenerating);
             this.onDispose();
         };
+        //how ai stop generating the content
         this.handleStopGenerating = async (event) => {
             if (this.is_done || event.message_id !== this.message.id) {
                 return;
@@ -122,10 +120,40 @@ class OpenAIResponseHandler {
             });
             await this.dispose();
         };
-        this.handleStreamEvent = async (event) => {
+        // all the event we are going to stream
+        this.handleStreamEvent = (event) => {
             const { cid, id } = this.message;
-            if (event.eve)
-                ;
+            if (event.event === "thread.run.created") {
+                this.run_id = event.data.id;
+            }
+            else if (event.event === "thread.message.delta") {
+                const textDelta = event.data.delta.content?.[0];
+                if (textDelta?.type === "text" && textDelta.text) {
+                    this.message_text += textDelta.text.value || "";
+                    const now = Date.now();
+                    if (now - this.last_update_time > 1000) {
+                        this.chatClient.partialUpdateMessage(id, {
+                            set: { text: this.message_text },
+                        });
+                        this.last_update_time = now;
+                    }
+                    this.chunk_counter += 1;
+                }
+            }
+            else if (event.event === "thread.message.completed") {
+                this.chatClient.partialUpdateMessage(id, {
+                    set: {
+                        text: event.data.content[0].type === "text"
+                            ? event.data.content[0].text.value
+                            : this.message_text,
+                    },
+                });
+                this.channel.sendEvent({
+                    type: "ai_indicator.clear",
+                    cid: cid,
+                    message_id: id,
+                });
+            }
         };
         this.handleError = async (error) => {
             if (this.is_done) {
@@ -145,6 +173,7 @@ class OpenAIResponseHandler {
             });
             await this.dispose();
         };
+        // this is our web search tool
         this.performWebSearch = async (query) => {
             const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
             if (!TAVILY_API_KEY) {
