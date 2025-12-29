@@ -32,6 +32,9 @@ export class OpenAIAgent implements AIAgent {
 
   init = async () => {
     const apiKey = process.env.OPENAI_API_KEY as string | undefined;
+    
+    // console.log("GPT API Key",apiKey );
+
     if (!apiKey) {
       throw new Error("OpenAI API key is required");
     }

@@ -21,6 +21,7 @@ class OpenAIAgent {
         this.getLastInteraction = () => this.lastInteractionTs;
         this.init = async () => {
             const apiKey = process.env.OPENAI_API_KEY;
+            // console.log("GPT API Key",apiKey );
             if (!apiKey) {
                 throw new Error("OpenAI API key is required");
             }
